@@ -1,0 +1,42 @@
+name: Build DedOleg playlist
+
+on:
+  push:
+    paths:
+      - '.dedoleg-build/**'
+      - '.github/workflows/build-dedoleg.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Rebuild M3U from compressed parts
+        run: |
+          python - <<'PY'
+          import base64
+          import gzip
+          from pathlib import Path
+
+          parts = sorted(Path('.dedoleg-build').glob('part*.b64'))
+          if len(parts) != 10:
+              raise SystemExit(f'Expected 10 playlist parts, found {len(parts)}')
+          encoded = ''.join(part.read_text(encoding='utf-8').strip() for part in parts)
+          playlist = gzip.decompress(base64.b64decode(encoded))
+          Path('DedOleg.m3u').write_bytes(playlist)
+          print(f'Built DedOleg.m3u: {len(playlist)} bytes from {len(parts)} parts')
+          PY
+
+      - name: Commit playlist
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add DedOleg.m3u
+          git commit -m 'Build DedOleg IPTV playlist' || echo 'No playlist changes'
+          git push
